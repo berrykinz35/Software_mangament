@@ -1,8 +1,9 @@
 import tkinter as tk
 from tkinter import messagebox
 from tkinter import simpledialog
+from tkcalendar import DateEntry
+from datetime import datetime
 import sqlite3
-
 
 # testing code
 current_user_id = 1
@@ -19,7 +20,6 @@ def register_user(username, password):
         messagebox.showerror("Error", "Username already exists. Please choose another username.")
     conn.close()
 
-
 # register user name and password in database
 def register_click():
     global registration_window
@@ -34,7 +34,6 @@ def register_click():
             messagebox.showerror("Error", "Please fill in all fields.")
     else:
         messagebox.showerror("Error", "Passwords do not match.")
-
 
 # Create the registration window
 def registration_user():
@@ -68,7 +67,6 @@ def registration_user():
     confirm_password_entry = tk.Entry(registration_window, show="*")  # Show * for password entry
     confirm_password_entry.grid(row=2, column=1, padx=5, pady=5, sticky="W")
 
-
 # select input user from database and login user
 def login(user, password):
     conn = sqlite3.connect('users.db')
@@ -94,7 +92,6 @@ def login(user, password):
         else:
             messagebox.showerror("Login Failed. User not found.")
 
-
     except Exception as e:
         print(f"An error occurred: {str(e)}")
         print(f"Please try again")
@@ -103,13 +100,11 @@ def login(user, password):
         c.close()
         conn.close()
 
-
 # validate user on click
 def login_click():
     username = username_entry.get()
     password = password_entry.get()
     login(username, password)
-
 
 # Create the login window
 root = tk.Tk()
@@ -137,13 +132,12 @@ log_in_button.grid(row=2, column=0, columnspan=2, padx=5, pady=5, sticky="WE")
 register_button = tk.Button(root, text="Registration", command=registration_user)
 register_button.grid(row=3, column=0, columnspan=2, padx=5, pady=5, sticky="WE")
 
-
 # Function to initialize the database
 def initialize_database():
     conn = sqlite3.connect('expenses.db')
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS expenses
-                 (id INTEGER PRIMARY KEY, item TEXT, amount REAL, category TEXT, userid INTEGER)''')
+                 (id INTEGER PRIMARY KEY, item TEXT, amount REAL, category TEXT, userid INTEGER, date DATE)''')
     conn.commit()
     conn.close()
     conn = sqlite3.connect('users.db')
@@ -153,20 +147,16 @@ def initialize_database():
     conn.commit()
     conn.close()
 
-
 # Initialize the database
 initialize_database()
 
-
 # Function to add an expense
-def add_expense(item, amount, category):
-
+def add_expense(item, amount, category, date):
     conn = sqlite3.connect('expenses.db')
     c = conn.cursor()
-    c.execute("INSERT INTO expenses (item, amount, category, userid) VALUES (?, ?, ?, ?)", (item, amount, category, current_user_id))
+    c.execute("INSERT INTO expenses (item, amount, category, userid, date) VALUES (?, ?, ?, ?, ?)", (item, amount, category, current_user_id, date))
     conn.commit()
     conn.close()
-
 
 # Function to edit an expense
 def edit_expense(id, new_item, new_amount, new_category):
@@ -176,7 +166,6 @@ def edit_expense(id, new_item, new_amount, new_category):
     conn.commit()
     conn.close()
 
-
 # Function to delete an expense
 def delete_expense(id):
     conn = sqlite3.connect('expenses.db')
@@ -185,38 +174,48 @@ def delete_expense(id):
     conn.commit()
     conn.close()
 
-
 # Function to view expenses
-def view_expenses(category=None):
+def view_expenses(period=None):
     conn = sqlite3.connect('expenses.db')
     c = conn.cursor()
-    if category:
-        c.execute("SELECT * FROM expenses WHERE category=? and userid=?", (category, current_user_id,))
+    if period == "Monthly":
+        current_month = datetime.now().month
+        c.execute("SELECT * FROM expenses WHERE userid=? AND strftime('%m', date) = ?",
+                  (current_user_id, str(current_month).zfill(2)))
+    elif period == "Quarterly":
+        current_month = datetime.now().month
+        current_quarter = (current_month - 1) // 3 + 1
+        c.execute("SELECT * FROM expenses WHERE userid=? AND (strftime('%m', date) - 1) / 3 + 1 = ?",
+                  (current_user_id, current_quarter))
+    elif period == "Yearly":
+        current_year = datetime.now().year
+        c.execute("SELECT * FROM expenses WHERE userid=? AND strftime('%Y', date) = ?",
+                  (current_user_id, str(current_year)))
     else:
-        c.execute("SELECT * FROM expenses where userid=?", (current_user_id,))
+        c.execute("SELECT * FROM expenses WHERE userid=?", (current_user_id,))
     expenses = c.fetchall()
     conn.close()
     return expenses
-
 
 # Function to handle the 'Add Expense' button click event
 def add_expense_click():
     item = item_entry.get()
     amount = amount_entry.get()
     category = category_entry.get()
-    if item and amount and category:
+    date = date_entry.get_date()
+    if item and amount and category and date:
         try:
             amount = float(amount)
-            add_expense(item, amount, category)
+            add_expense(item, amount, category, date)
             messagebox.showinfo("Success", "Expense added successfully!")
             item_entry.delete(0, tk.END)
             amount_entry.delete(0, tk.END)
             category_entry.delete(0, tk.END)
+            date_entry.delete(0, tk.END)
         except ValueError:
             messagebox.showerror("Error", "Amount must be a number.")
     else:
         messagebox.showerror("Error", "Please fill in all fields.")
-
 
 # Function to handle the 'View Expenses' button click event
 def view_expenses_click():
@@ -229,7 +228,68 @@ def view_expenses_click():
     else:
         messagebox.showinfo("Info", "No expenses found.")
 
+# Function to handle the 'View Expense Summaries' button click event
+def view_expense_summaries_click():
+    global summary_window
+    summary_window = tk.Toplevel()
+    summary_window.title("View Expense Summaries")
+    summary_window.geometry("300x250")
 
+    period_label = tk.Label(summary_window, text="Select Period:")
+    period_label.grid(row=0, column=0, padx=5, pady=5)
+
+    period_options = ["Monthly", "Quarterly", "Yearly"]
+    period_var = tk.StringVar()
+    period_dropdown = tk.OptionMenu(summary_window, period_var, *period_options)
+    period_dropdown.grid(row=0, column=1, padx=5, pady=5)
+
+    date_range_label = tk.Label(summary_window, text="OR Select a Date Range:")
+    date_range_label.grid(row=1, column=0, columnspan=2, padx=5, pady=5)
+
+    start_date_label = tk.Label(summary_window, text="Start Date:")
+    start_date_label.grid(row=2, column=0, padx=5, pady=5)
+    start_date_entry = DateEntry(summary_window, width=12, background='darkblue', foreground='white', borderwidth=2)
+    start_date_entry.grid(row=2, column=1, padx=5, pady=5)
+
+    end_date_label = tk.Label(summary_window, text="End Date:")
+    end_date_label.grid(row=3, column=0, padx=5, pady=5)
+    end_date_entry = DateEntry(summary_window, width=12, background='darkblue', foreground='white', borderwidth=2)
+    end_date_entry.grid(row=3, column=1, padx=5, pady=5)
+
+    view_summary_button = tk.Button(summary_window, text="View Summary", command=lambda: show_summary(period_var.get(), start_date_entry.get_date(), end_date_entry.get_date(), is_period_selected=True if period_var.get() else False))
+    view_summary_button.grid(row=4, column=0, columnspan=2, padx=5, pady=5)
+
+# Function to retrieve and display expense summaries based on the selected period or date range
+def show_summary(period, start_date=None, end_date=None, is_period_selected=True):
+    conn = sqlite3.connect('expenses.db')
+    c = conn.cursor()
+    
+    if is_period_selected:
+        if period == "Monthly":
+           current_month = datetime.now().month
+           c.execute("SELECT * FROM expenses WHERE userid=? AND strftime('%m', date) = ?", (current_user_id, str(current_month).zfill(2)))
+        elif period == "Quarterly":
+            current_month = datetime.now().month
+            current_quarter = (current_month - 1) // 3 + 1
+            c.execute("SELECT * FROM expenses WHERE userid=? AND (strftime('%m', date) - 1) / 3 + 1 = ?", (current_user_id, current_quarter))
+        elif period == "Yearly":
+            current_year = datetime.now().year
+            c.execute("SELECT * FROM expenses WHERE userid=? AND strftime('%Y', date) = ?", (current_user_id, str(current_year)))
+        else:
+            messagebox.showerror("Error", "Invalid period selected. Please choose a valid period.")
+    else:
+        if start_date and end_date:
+            if start_date > end_date:
+                messagebox.showerror("Error", "Start date cannot be after end date. Please adjust the date range.")
+                return
+            else:
+                c.execute("SELECT * FROM expenses WHERE userid=? AND date BETWEEN ? AND ?", (current_user_id, start_date, end_date))
+        else:
+            messagebox.showerror("Error", "Please select both start and end dates for the date range.")
+            return
+    expenses = c.fetchall()
+    conn.close()
+    
 # Function to handle the 'Delete Expense' button click event
 def delete_expense_click():
     selected_index = expense_listbox.curselection()
@@ -240,7 +300,6 @@ def delete_expense_click():
         view_expenses_click()
     else:
         messagebox.showerror("Error", "Please select an expense to delete.")
-
 
 # Function to handle the 'Spending Limits' button click event
 def set_spending_limits():
@@ -276,16 +335,39 @@ def set_spending_limits():
     save_button = tk.Button(limit_window, text="Save", command=save_limits)
     save_button.grid(row=len(categories), columnspan=2, padx=5, pady=5, sticky="WE")
 
-
 # function to handle the 'invite friends' button click event
-def invite_expense_report():
-    friend_number = simpledialog.askstring("Invite Friend", "Enter friend's phone number:")
-    if friend_number:
-        self.invited_friends.add(friend_number)
-        self.status_label.config(text=f"{friend_number} has been invited!.")
-    else:
-        print("Error, friend's number not provided")
+import smtplib
+from email.mime.text import MIMEText
+from tkinter import Tk, simpledialog
 
+def send_email_invite(sender_email, sender_password, receiver_email):
+    message = MIMEText("Hello! You've been invited to join our expense report.")
+    message["Subject"] = "Invitation to Join Expense Report"
+    message["From"] = sender_email
+    message["To"] = receiver_email
+
+    try:
+        server = smtplib.SMTP_SSL("smtp.gmail.com", 465)
+        server.login(sender_email, sender_password)
+        server.sendmail(sender_email, receiver_email, message.as_string())
+        print("Email sent successfully!")
+    except Exception as e:
+        print(f"Error sending email: {e}")
+    finally:
+        server.quit()
+
+def invite_expense_report():
+    sender_email = "jesse36987@gmail.com"
+    sender_password = "uybe jjcu ltqb axju"
+    receiver_email = simpledialog.askstring("Invite Friend", "Enter friend's email address:")
+    if receiver_email:
+        send_email_invite(sender_email, sender_password, receiver_email)
+        
+        invited_friends = receiver_email
+        status_label = text=f"{receiver_email} has been invited."
+
+    else:
+        print("Error, friend's email not provided")
 
 # Create the Expense Window
 def open_expense():
@@ -315,51 +397,62 @@ def open_expense():
     category_entry = tk.Entry(expense)
     category_entry.grid(row=2, column=1, padx=5, pady=5)
 
+    date_label = tk.Label(expense, text="Date:")
+    date_label.grid(row=3, column=0, padx=5, pady=5)
+
+    global date_entry
+    date_entry = DateEntry(expense, width=12, background='darkblue', foreground='white', borderwidth=2)
+    date_entry.grid(row=3, column=1, padx=5, pady=5)
+    
     add_button = tk.Button(expense, text="Add Expense", command=add_expense_click)
-    add_button.grid(row=3, column=0, columnspan=2, padx=5, pady=5, sticky="WE")
+    add_button.grid(row=4, column=0, columnspan=2, padx=5, pady=5, sticky="WE")
 
     view_button = tk.Button(expense, text="View Expenses", command=view_expenses_click)
-    view_button.grid(row=4, column=0, columnspan=2, padx=5, pady=5, sticky="WE")
+    view_button.grid(row=5, column=0, columnspan=2, padx=5, pady=5, sticky="WE")
+
+    summaries_button = tk.Button(expense, text="View Expense Summaries", command=view_expense_summaries_click)
+    summaries_button.grid(row=6, column=0, columnspan=2, padx= 5, pady=5, sticky="WE")
 
     delete_button = tk.Button(expense, text="Delete Expense", command=delete_expense_click)
-    delete_button.grid(row=5, column=0, columnspan=2, padx=5, pady=5, sticky="WE")
+    delete_button.grid(row=7, column=0, columnspan=2, padx=5, pady=5, sticky="WE")
 
     limit_button = tk.Button(expense, text="Spending Limits", command=set_spending_limits)
-    limit_button.grid(row=6, column=0, columnspan=2, padx=5, pady=5, sticky="WE")
+    limit_button.grid(row=8, column=0, columnspan=2, padx=5, pady=5, sticky="WE")
 
     invite_button = tk.Button(expense, text="Invite Friends", command=invite_expense_report)
-    invite_button.grid(row=7, column=0, columnspan=2, padx=5, pady=5, sticky="WE")
+    invite_button.grid(row=9, column=0, columnspan=2, padx=5, pady=5, sticky="WE")
 
     global expense_listbox
     expense_listbox = tk.Listbox(expense, height=10, width=50)
-    expense_listbox.grid(row=8, column=0, columnspan=2, padx=5, pady=5)
+    expense_listbox.grid(row=10, column=0, columnspan=2, padx=5, pady=5)
 
 # Test adding an expense
-add_expense("Groceries", 50.00, "Food")
-add_expense("Gas", 30.00, "Transportation")
-add_expense("Movie tickets", 25.00, "Entertainment")
+# add_expense("Groceries", 50.00, "Food")
+# add_expense("Gas", 30.00, "Transportation")
+# add_expense("Movie tickets", 25.00, "Entertainment")
 
 # Test viewing expenses
-expenses = view_expenses()
-print("All Expenses:")
-for expense in expenses:
-    print(expense)
+# expenses = view_expenses()
+# print("All Expenses:")
+# for expense in expenses:
+   # print(expense)
 
 # Test viewing expenses for a specific category
-expenses_food = view_expenses("Food")
-print("\nFood Expenses:")
-for expense in expenses_food:
-    print(expense)
+# expenses_food = view_expenses("Food")
+# print("\nFood Expenses:")
+# for expense in expenses_food:
+   # print(expense)
 
 # Test deleting an expense (assuming an expense ID is known)
 # Note: Replace '1' with the actual expense ID you want to delete
-delete_expense(1)
-print("\nExpense ID 1 deleted.")
+# delete_expense(1)
+# print("\nExpense ID 1 deleted.")
 
 # Test viewing expenses after deletion
-expenses_after_deletion = view_expenses()
-print("\nAll Expenses after deletion:")
-for expense in expenses_after_deletion:
-    print(expense)
+# expenses_after_deletion = view_expenses()
+# print("\nAll Expenses after deletion:")
+# for expense in expenses_after_deletion:
+   # print(expense)
 
 root.mainloop()
+
